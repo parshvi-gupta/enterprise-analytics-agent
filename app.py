@@ -1,11 +1,9 @@
 from pathlib import Path
-import os
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 from src.analytics_tools import profile_data, grouped_metric, anomaly_scan
 from src.demo_agent import run_demo_analysis
-from src.multi_agent import run_multi_agent
 from src.provider_llm import ask_provider
 
 load_dotenv()
@@ -42,10 +40,17 @@ st.subheader("Ask the analytics team")
 question = st.text_input("Business question", placeholder="Compare total revenue by region and explain the main pattern")
 provider = st.selectbox("AI provider", ["No AI (free demo)", "OpenAI", "Anthropic Claude", "Google Gemini"])
 key = ""
+model = None
+model_options = {
+    "OpenAI": ["gpt-4o-mini", "gpt-4o"],
+    "Anthropic Claude": ["claude-3-5-haiku-latest", "claude-3-5-sonnet-latest"],
+    "Google Gemini": ["gemini-2.0-flash", "gemini-2.0-pro"],
+}
 if provider != "No AI (free demo)":
-    key = st.text_input(f"{provider} API key", type="password", help="Used only for this session; not saved in this app.")
+    model = st.selectbox("Model", model_options[provider])
+    key = st.text_input(f"{provider} API key", type="password", help="Used in memory for this session; not saved intentionally by the app.")
     st.caption("API keys are separate from consumer ChatGPT/Claude/Gemini subscriptions. API usage may be billed by the provider.")
-    st.warning("Privacy: when AI is enabled, your question and a limited deterministic analytics summary are sent to your selected provider. The raw uploaded dataset is not intentionally sent.")
+    st.warning("Privacy: AI mode sends your question and data-derived findings to the selected provider. Findings may contain details derived from the uploaded CSV. Do not upload sensitive or confidential data to this public demo.")
 if st.button("Run analysis", type="primary", disabled=not question.strip()):
     with st.spinner("Running specialist analytics..."):
         try:
@@ -56,9 +61,14 @@ if st.button("Run analysis", type="primary", disabled=not question.strip()):
                     st.error("Enter your provider API key to use AI, or select No AI.")
                 else:
                     with st.spinner(f"Getting interpretation from {provider}..."):
-                        ai_text = ask_provider(provider, key.strip(), question, result["findings"])
-                    st.subheader(f"{provider} interpretation")
-                    st.markdown(ai_text)
+                        try:
+                        ai_text = ask_provider(provider, key.strip(), question, result["findings"], model=model)
+                        st.subheader(f"{provider} interpretation ({model})")
+                        st.markdown(ai_text)
+                        payload_chars = len(question) + len(str(result["findings"]))
+                        st.caption(f"Rough input-size estimate: ~{max(1, payload_chars // 4):,} tokens. This is not actual token usage or a cost estimate; provider billing varies by model and output.")
+                    except Exception as ai_exc:
+                        st.error(f"AI provider request failed ({type(ai_exc).__name__}). Check the API key, model availability, provider billing, or quota.")
             with st.expander("Specialist execution trace"):
                 st.write("**Selected specialists:**", result.get("specialists", []))
                 for event in result.get("audit_log", []):
