@@ -1,89 +1,89 @@
 # Enterprise Analytics Agent
 
-**A bounded, multi-agent analytics copilot:** a supervisor routes a business question to specialized analysts; specialists compute deterministic evidence; a synthesizer drafts a response; a critic checks grounding and can request one revision.
+**A portfolio-ready analytics copilot with a deterministic, credential-free demo and an optional LLM-powered workflow.** A supervisor routes questions to fixed specialists; analytics are computed by bounded Python tools and displayed with evidence.
+
+## Live demo
+
+The app works without an OpenAI API key. The default demo mode uses deterministic routing and analytics, so visitors can try it immediately. LLM mode is optional and requires a personal API key configured in Streamlit Secrets.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    U[Business Question] --> S[Supervisor / Router]
-    S --> P[Profiler Specialist]
-    S --> M[Metrics Specialist]
-    S --> T[Trend Specialist]
-    S --> A[Anomaly Specialist]
-    P --> D[Dispatch Next Selected Specialist]
-    M --> D
-    T --> D
-    A --> D
-    D -->|More selected agents| P
-    D -->|Queue complete| Y[Synthesizer]
-    Y --> C[Critic / Grounding Review]
-    C -->|Approved| F[Final Answer]
-    C -->|One revision allowed| R[Revision Agent]
-    R --> C
+    U[Business Question] --> R[Rule-based demo router or optional LLM supervisor]
+    R --> P[Profiler]
+    R --> M[Metrics]
+    R --> T[Trends]
+    R --> A[Anomalies]
+    P --> E[Deterministic evidence]
+    M --> E
+    T --> E
+    A --> E
+    E --> S[Demo summary or LLM synthesis]
+    S --> C[Critic in optional LLM workflow]
+    C --> F[Final response]
 ```
 
+## Demo mode (no API key)
+
+- CSV upload and dataset profiling
+- Rule-based routing to fixed specialist agents
+- Grouped metrics and monthly trends
+- IQR anomaly scanning
+- Specialist evidence and execution trace
+- No API key, external model calls, or arbitrary code execution
+
+## Optional LLM mode
+
+If you have an OpenAI API key, set it in Streamlit Cloud's app settings under **Secrets**:
+
+```toml
+OPENAI_API_KEY = "your-key"
+OPENAI_MODEL = "gpt-4o-mini"
+```
+
+The LLM workflow adds model-based routing, interpretation, synthesis, and critic/revision. Do not commit credentials.
+
 ## Specialists
-| Agent | Responsibilities | Deterministic evidence |
+
+| Specialist | Responsibility | Deterministic tool |
 |---|---|---|
-| Supervisor | Route to minimum relevant agents | Fixed specialist allow-list; fallback rules |
-| Profiler | Dataset shape, types, missingness, numeric summaries | Pandas profiling functions |
-| Metrics | Aggregations and comparisons | Grouped aggregation |
-| Trends | Time-based summaries | Date parsing and monthly aggregation |
-| Anomalies | Flag unusual numeric observations | IQR fences |
-| Synthesizer | Combine evidence into a clear answer | Specialist findings |
-| Critic | Check grounding, caveats and completeness | One bounded revision loop |
+| Profiler | Schema, missingness, summaries | `profile_data` |
+| Metrics | Aggregations/comparisons | `grouped_metric` |
+| Trends | Monthly patterns | `monthly_trend` |
+| Anomalies | Unusual values | IQR fences |
 
-## Reliability and safety controls
-- Fixed roles and finite workflow; no free-form agent spawning.
-- Analytics are computed in Python before interpretation; LLMs don't calculate directly from raw rows.
-- No arbitrary Python, shell, or SQL execution tool.
-- Critic may request at most one revision.
-- Fallback routing and evidence summaries operate if LLM calls fail.
-- CSV data remains in the local app process; the app does not persist it.
-- Use synthetic/public data only for the portfolio demo.
+## Safety and scope
 
-## Tech stack
-Python 3.11+, Streamlit, pandas, LangGraph, LangChain OpenAI integration, pytest.
+- Fixed specialist roles; no agent spawning.
+- Deterministic calculations are performed before interpretation.
+- No arbitrary Python, shell, or SQL execution.
+- Demo data is synthetic; uploaded data is processed in-session and not persisted by the app.
+- This is an exploratory analytics tool, not a decision automation system.
 
 ## Run locally
+
 ```bash
 python -m venv .venv
 # Windows: .venv\\Scripts\\activate
 # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
-```
-Set the API key in `.env`:
-```env
-OPENAI_API_KEY=your_key_here
-OPENAI_MODEL=gpt-4o-mini
-```
-Start:
-```bash
 streamlit run app.py
 ```
 
-Without an API key, fallback routing and deterministic tools still run; LLM interpretation is replaced with evidence summaries.
+## Tests
 
-## Example questions
-- Compare revenue by region.
-- What is the monthly revenue trend?
-- Find unusual values in revenue.
-- Profile the dataset and explain its quality.
-
-## Testing
 ```bash
 pytest -q
 ```
 
 ## Roadmap
-- DuckDB read-only SQL analyst (query validation and statement/row limits)
-- Metric dictionary retrieval (RAG)
-- Evaluation set for tool selection, groundedness and answer quality
+
+- Safe read-only DuckDB analyst
+- Evaluation harness for routing and evidence quality
 - LangGraph checkpointing and thread memory
-- Token/cost telemetry
-- Report export and additional visualizations
+- Tracing and cost telemetry
+- Report export and visual insights
 
 ## License
 MIT
