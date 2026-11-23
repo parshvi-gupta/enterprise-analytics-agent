@@ -74,6 +74,17 @@ m2.metric("Columns", f"{len(df.columns):,}")
 m3.metric("Missing cells", f"{int(df.isna().sum().sum()):,}")
 m4.metric("Numeric fields", f"{len(numeric):,}")
 
+# Data health insights
+st.markdown("### Dataset health signals")
+h1,h2,h3 = st.columns(3)
+missing_pct = (df.isna().sum().sum() / max(1, df.size)) * 100
+h1.metric("Completeness", f"{100-missing_pct:.1f}%")
+h2.metric("Duplicate rows", f"{int(df.duplicated().sum()):,}")
+h3.metric("Largest numeric spread", max(numeric, key=lambda col: float(df[col].std(skipna=True) or 0)) if numeric else "—")
+with st.expander("Download data profile"):
+    profile_frame = pd.DataFrame({"column":df.columns.astype(str),"dtype":df.dtypes.astype(str),"missing":df.isna().sum().values,"missing_pct":(df.isna().mean()*100).round(1).values,"unique":df.nunique(dropna=True).values})
+    st.download_button("Download profile CSV",profile_frame.to_csv(index=False).encode("utf-8"),"dataset_profile.csv","text/csv")
+
 overview, explore, ask, tools = st.tabs(["Overview", "Explore", "AI Copilot", "Analytics tools"])
 with overview:
     left,right = st.columns([1.25,1])
