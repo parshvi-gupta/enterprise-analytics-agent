@@ -6,11 +6,12 @@ from dotenv import load_dotenv
 from src.analytics_tools import profile_data, grouped_metric, anomaly_scan
 from src.demo_agent import run_demo_analysis
 from src.multi_agent import run_multi_agent
+from src.provider_llm import ask_provider
 
 load_dotenv()
-st.set_page_config(page_title="Analytics Copilot | Multi-Agent", page_icon="📊", layout="wide")
-st.title("📊 Analytics Copilot")
-st.caption("Bounded analytics specialists with deterministic demo mode and optional LLM mode.")
+st.set_page_config(page_title="Analytics Copilot", page_icon="📊", layout="wide")
+st.title("📊 Enterprise Analytics Copilot")
+st.caption("Deterministic analytics by default, with optional bring-your-own AI provider.")
 sample_path = Path("data/sample_sales.csv")
 
 with st.sidebar:
@@ -38,29 +39,35 @@ with st.expander("Profile data"):
     st.json(profile_data(df))
 
 st.subheader("Ask the analytics team")
-question = st.text_input("Question", placeholder="Compare total revenue by region and explain the main pattern")
-api_available = bool(os.getenv("OPENAI_API_KEY"))
-use_llm = st.checkbox("Use optional LLM-powered workflow (requires API key)", value=False, disabled=not api_available, help="Demo mode works without credentials. LLM mode requires your own API key.")
-if not api_available:
-    st.info("No API key detected — deterministic demo mode is enabled. All core analytics and specialist routing work without credentials.")
+question = st.text_input("Business question", placeholder="Compare total revenue by region and explain the main pattern")
+provider = st.selectbox("AI provider", ["No AI (free demo)", "OpenAI", "Anthropic Claude", "Google Gemini"])
+key = ""
+if provider != "No AI (free demo)":
+    key = st.text_input(f"{provider} API key", type="password", help="Used only for this session; not saved in this app.")
+    st.caption("API keys are separate from consumer ChatGPT/Claude/Gemini subscriptions. API usage may be billed by the provider.")
+    st.warning("Privacy: when AI is enabled, your question and a limited deterministic analytics summary are sent to your selected provider. The raw uploaded dataset is not intentionally sent.")
 if st.button("Run analysis", type="primary", disabled=not question.strip()):
     with st.spinner("Running specialist analytics..."):
         try:
-            result = run_multi_agent(df, question) if use_llm and api_available else run_demo_analysis(df, question)
-            st.markdown(result.get("final_answer", result.get("draft_answer", "No answer was produced.")))
-            with st.expander("Agent execution trace"):
+            result = run_demo_analysis(df, question)
+            st.markdown(result["final_answer"])
+            if provider != "No AI (free demo)":
+                if not key.strip():
+                    st.error("Enter your provider API key to use AI, or select No AI.")
+                else:
+                    with st.spinner(f"Getting interpretation from {provider}..."):
+                        ai_text = ask_provider(provider, key.strip(), question, result["findings"])
+                    st.subheader(f"{provider} interpretation")
+                    st.markdown(ai_text)
+            with st.expander("Specialist execution trace"):
                 st.write("**Selected specialists:**", result.get("specialists", []))
-                st.write("**Workflow log:**")
                 for event in result.get("audit_log", []):
                     st.write(f"- {event}")
-                st.write("**Evidence and specialist findings:**")
                 st.json(result.get("findings", []))
-                st.write("**Critic approved:**", result.get("approved"))
-                st.write("**Revision attempts:**", result.get("revision_attempts", 0))
         except Exception as exc:
             st.error(f"Workflow error: {type(exc).__name__}: {exc}")
 
-st.subheader("Deterministic tools (no LLM)")
+st.subheader("Deterministic tools (no AI)")
 with st.expander("Group a metric"):
     categorical = [c for c in df.columns if not pd.api.types.is_numeric_dtype(df[c])]
     numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
@@ -76,5 +83,4 @@ with st.expander("IQR outlier scan"):
         anomaly_metric = st.selectbox("Metric to scan", numeric)
         if st.button("Scan", key="scan_outliers"):
             st.json(anomaly_scan(df, anomaly_metric))
-
-st.info("Portfolio demo uses synthetic sample data. Analytics are deterministic; no arbitrary code execution or external data writes.")
+st.info("Demo data is synthetic. No AI selected? The app remains fully usable. AI mode sends the question and computed summaries, not the full uploaded dataset.")
