@@ -1,28 +1,50 @@
 # Enterprise Analytics Agent
 
-An agentic analytics copilot that converts natural-language business questions into a plan, executes data analysis tools, validates results, and returns evidence-backed insights.
-
-## MVP capabilities
-- Upload CSV data or use the included sample sales dataset
-- Ask business questions in natural language
-- LLM tool-calling loop with bounded execution
-- Tools: dataset profile, grouped metrics, trend analysis, anomaly scan
-- Lightweight Streamlit UI
-- Clear separation of data tools, agent orchestration, and UI
-
-> This project is a portfolio demo. Use synthetic/sample data only. The agent is not connected to production systems.
+**A bounded, multi-agent analytics copilot:** a supervisor routes a business question to specialized analysts; specialists compute deterministic evidence; a synthesizer drafts a response; a critic checks grounding and can request one revision.
 
 ## Architecture
-```
-Question -> Agent loop -> Tool selection -> Analytics tools -> Tool result
-                  ^                              |
-                  +---------- iteration ----------+
-                              |
-                       Answer + caveats
+
+```mermaid
+flowchart TD
+    U[Business Question] --> S[Supervisor / Router]
+    S --> P[Profiler Specialist]
+    S --> M[Metrics Specialist]
+    S --> T[Trend Specialist]
+    S --> A[Anomaly Specialist]
+    P --> D[Dispatch Next Selected Specialist]
+    M --> D
+    T --> D
+    A --> D
+    D -->|More selected agents| P
+    D -->|Queue complete| Y[Synthesizer]
+    Y --> C[Critic / Grounding Review]
+    C -->|Approved| F[Final Answer]
+    C -->|One revision allowed| R[Revision Agent]
+    R --> C
 ```
 
-## Stack
-Python 3.11+, Streamlit, pandas, OpenAI API (optional to run the agent), pytest.
+## Specialists
+| Agent | Responsibilities | Deterministic evidence |
+|---|---|---|
+| Supervisor | Route to minimum relevant agents | Fixed specialist allow-list; fallback rules |
+| Profiler | Dataset shape, types, missingness, numeric summaries | Pandas profiling functions |
+| Metrics | Aggregations and comparisons | Grouped aggregation |
+| Trends | Time-based summaries | Date parsing and monthly aggregation |
+| Anomalies | Flag unusual numeric observations | IQR fences |
+| Synthesizer | Combine evidence into a clear answer | Specialist findings |
+| Critic | Check grounding, caveats and completeness | One bounded revision loop |
+
+## Reliability and safety controls
+- Fixed roles and finite workflow; no free-form agent spawning.
+- Analytics are computed in Python before interpretation; LLMs don't calculate directly from raw rows.
+- No arbitrary Python, shell, or SQL execution tool.
+- Critic may request at most one revision.
+- Fallback routing and evidence summaries operate if LLM calls fail.
+- CSV data remains in the local app process; the app does not persist it.
+- Use synthetic/public data only for the portfolio demo.
+
+## Tech stack
+Python 3.11+, Streamlit, pandas, LangGraph, LangChain OpenAI integration, pytest.
 
 ## Run locally
 ```bash
@@ -30,31 +52,38 @@ python -m venv .venv
 # Windows: .venv\\Scripts\\activate
 # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env  # add OPENAI_API_KEY if using the LLM mode
+cp .env.example .env
+```
+Set the API key in `.env`:
+```env
+OPENAI_API_KEY=your_key_here
+OPENAI_MODEL=gpt-4o-mini
+```
+Start:
+```bash
 streamlit run app.py
 ```
 
-## Demo questions
-- Which region has the highest revenue?
-- Compare revenue by channel.
-- Show monthly sales trend.
-- Find unusual revenue values.
+Without an API key, fallback routing and deterministic tools still run; LLM interpretation is replaced with evidence summaries.
 
-Without an API key, the app still supports dataset profiling and the built-in deterministic analytics functions.
+## Example questions
+- Compare revenue by region.
+- What is the monthly revenue trend?
+- Find unusual values in revenue.
+- Profile the dataset and explain its quality.
 
-## Safety and reliability
-- Tool allow-list (no arbitrary code execution)
-- Tool call iteration cap
-- Tool input validation
-- Errors returned to the model as tool results
-- Synthetic sample dataset
+## Testing
+```bash
+pytest -q
+```
 
 ## Roadmap
-- LangGraph workflow with planner / analyst / critic nodes
-- DuckDB SQL analytics
-- RAG over metric definitions
-- Evaluation dataset and tracing
-- Docker and CI
+- DuckDB read-only SQL analyst (query validation and statement/row limits)
+- Metric dictionary retrieval (RAG)
+- Evaluation set for tool selection, groundedness and answer quality
+- LangGraph checkpointing and thread memory
+- Token/cost telemetry
+- Report export and additional visualizations
 
 ## License
 MIT
