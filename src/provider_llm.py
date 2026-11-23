@@ -2,7 +2,7 @@
 from __future__ import annotations
 import json
 
-def ask_provider(provider: str, api_key: str, question: str, findings: list[dict]) -> str:
+def ask_provider(provider: str, api_key: str, question: str, findings: list[dict], model: str | None = None) -> str:
     evidence = json.dumps(findings, default=str)[:12000]
     prompt = (
         "You are an enterprise analytics assistant. Interpret ONLY the provided deterministic evidence. "
@@ -14,7 +14,7 @@ def ask_provider(provider: str, api_key: str, question: str, findings: list[dict
         from openai import OpenAI
         client = OpenAI(api_key=api_key)
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=model or "gpt-4o-mini",
             messages=[{"role":"user","content":prompt}],
             temperature=0.2,
         )
@@ -23,7 +23,7 @@ def ask_provider(provider: str, api_key: str, question: str, findings: list[dict
         from openai import OpenAI
         client = OpenAI(api_key=api_key, base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
         response = client.chat.completions.create(
-            model="gemini-2.0-flash",
+            model=model or "gemini-2.0-flash",
             messages=[{"role":"user","content":prompt}],
             temperature=0.2,
         )
@@ -32,7 +32,7 @@ def ask_provider(provider: str, api_key: str, question: str, findings: list[dict
         from anthropic import Anthropic
         client = Anthropic(api_key=api_key)
         response = client.messages.create(
-            model="claude-3-5-haiku-latest",
+            model=model or "claude-3-5-haiku-latest",
             max_tokens=900,
             messages=[{"role":"user","content":prompt}],
         )
