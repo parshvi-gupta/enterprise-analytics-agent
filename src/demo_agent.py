@@ -29,7 +29,10 @@ def run_demo_analysis(df, question: str) -> dict:
     for agent in specialists:
         if agent == "profiler":
             evidence = profile_data(df)
-            text = f"Dataset contains {evidence['rows"]} rows and {len(evidence['columns'])} columns, with {sum(evidence['missing_values'].values())} missing cells."
+            row_count = evidence["rows"]
+            column_count = len(evidence["columns"])
+            missing_count = sum(evidence["missing_values"].values())
+            text = f"Dataset contains {row_count} rows and {column_count} columns, with {missing_count} missing cells."
         elif agent == "metrics":
             group = next((c for c in categorical if c.lower() in q), categorical[0] if categorical else None)
             metric = next((c for c in numeric if c.lower() in q), numeric[0] if numeric else None)
