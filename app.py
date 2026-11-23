@@ -2,95 +2,146 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
-from src.analytics_tools import profile_data, grouped_metric, anomaly_scan
+from src.analytics_tools import profile_data, grouped_metric, monthly_trend, anomaly_scan
 from src.demo_agent import run_demo_analysis
 from src.provider_llm import ask_provider
 
 load_dotenv()
-st.set_page_config(page_title="Analytics Copilot", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Enterprise Analytics Copilot", page_icon="📊", layout="wide")
+st.markdown("""
+<style>
+.block-container {padding-top: 1.6rem; padding-bottom: 2.5rem;}
+[data-testid="stMetric"] {background:rgba(120,120,120,.07); padding:14px 16px; border-radius:14px; border:1px solid rgba(120,120,120,.15);}
+div[data-testid="stTabs"] button {font-weight:600;}
+</style>
+""", unsafe_allow_html=True)
+
 st.title("📊 Enterprise Analytics Copilot")
-st.caption("Deterministic analytics by default, with optional bring-your-own AI provider.")
-sample_path = Path("data/sample_sales.csv")
+st.caption("Explore data, uncover patterns, and turn evidence into practical business insights.")
+
+@st.cache_data
+def load_sample():
+    return pd.read_csv(Path("data/sample_sales.csv"))
 
 with st.sidebar:
-    st.header("Dataset")
-    upload = st.file_uploader("Upload CSV", type=["csv"])
-    if upload is not None:
+    st.header("Workspace")
+    uploaded = st.file_uploader("Upload a CSV dataset", type=["csv"])
+    if uploaded:
         try:
-            df = pd.read_csv(upload)
+            df = pd.read_csv(uploaded)
         except Exception as exc:
-            st.error(f"Unable to parse CSV: {exc}")
+            st.error(f"Could not read this CSV: {exc}")
             st.stop()
     else:
-        df = pd.read_csv(sample_path)
-        st.info("Sample sales dataset loaded.")
-    st.write(f"**Rows:** {len(df):,} | **Columns:** {len(df.columns)}")
-    st.write("Fields:", list(df.columns))
+        df = load_sample()
+        st.info("Using sample sales data")
+    st.divider()
+    st.caption("Current dataset")
+    st.write(f"**{len(df):,} rows** · **{len(df.columns)} columns**")
+    st.caption("Fields")
+    st.write(", ".join(map(str, df.columns)))
 
-st.subheader("Data overview")
-k1, k2, k3 = st.columns(3)
-k1.metric("Records", f"{len(df):,}")
-k2.metric("Columns", len(df.columns))
-k3.metric("Missing values", int(df.isna().sum().sum()))
-st.dataframe(df.head(50), use_container_width=True)
-with st.expander("Profile data"):
-    st.json(profile_data(df))
+if df.empty:
+    st.warning("This dataset is empty. Upload a CSV with at least one row to continue.")
+    st.stop()
 
-st.subheader("Ask the analytics team")
-question = st.text_input("Business question", placeholder="Compare total revenue by region and explain the main pattern")
-provider = st.selectbox("AI provider", ["No AI (free demo)", "OpenAI", "Anthropic Claude", "Google Gemini"])
-key = ""
-model = None
-model_options = {
-    "OpenAI": ["gpt-4o-mini", "gpt-4o"],
-    "Anthropic Claude": ["claude-3-5-haiku-latest", "claude-3-5-sonnet-latest"],
-    "Google Gemini": ["gemini-2.0-flash", "gemini-2.0-pro"],
-}
-if provider != "No AI (free demo)":
-    model = st.selectbox("Model", model_options[provider])
-    key = st.text_input(f"{provider} API key", type="password", help="Used in memory for this session; not saved intentionally by the app.")
-    st.caption("API keys are separate from consumer ChatGPT/Claude/Gemini subscriptions. API usage may be billed by the provider.")
-    st.warning("Privacy: AI mode sends your question and data-derived findings to the selected provider. Findings may contain details derived from the uploaded CSV. Do not upload sensitive or confidential data to this public demo.")
-if st.button("Run analysis", type="primary", disabled=not question.strip()):
-    with st.spinner("Running specialist analytics..."):
-        try:
-            result = run_demo_analysis(df, question)
-            st.markdown(result["final_answer"])
-            if provider != "No AI (free demo)":
-                if not key.strip():
-                    st.error("Enter your provider API key to use AI, or select No AI.")
-                else:
-                    with st.spinner(f"Getting interpretation from {provider}..."):
-                        try:
-                            ai_text = ask_provider(provider, key.strip(), question, result["findings"], model=model)
-                            st.subheader(f"{provider} interpretation ({model})")
-                            st.markdown(ai_text)
-                            payload_chars = len(question) + len(str(result["findings"]))
-                            st.caption(f"Rough input-size estimate: ~{max(1, payload_chars // 4):,} tokens. This is not actual token usage or a cost estimate; provider billing varies by model and output.")
-                        except Exception as ai_exc:
-                            st.error(f"AI provider request failed ({type(ai_exc).__name__}). Check the API key, model availability, provider billing, or quota.")
-            with st.expander("Specialist execution trace"):
-                st.write("**Selected specialists:**", result.get("specialists", []))
-                for event in result.get("audit_log", []):
-                    st.write(f"- {event}")
-                st.json(result.get("findings", []))
-        except Exception as exc:
-            st.error(f"Workflow error: {type(exc).__name__}: {exc}")
+numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+categorical = [c for c in df.columns if not pd.api.types.is_numeric_dtype(df[c])]
+date_cols = [c for c in df.columns if any(k in str(c).lower() for k in ("date", "time", "month"))]
 
-st.subheader("Deterministic tools (no AI)")
-with st.expander("Group a metric"):
-    categorical = [c for c in df.columns if not pd.api.types.is_numeric_dtype(df[c])]
-    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+m1,m2,m3,m4 = st.columns(4)
+m1.metric("Records", f"{len(df):,}")
+m2.metric("Columns", f"{len(df.columns):,}")
+m3.metric("Missing cells", f"{int(df.isna().sum().sum()):,}")
+m4.metric("Numeric fields", f"{len(numeric):,}")
+
+overview, explore, ask, tools = st.tabs(["Overview", "Explore", "AI Copilot", "Analytics tools"])
+with overview:
+    left,right = st.columns([1.25,1])
+    with left:
+        st.subheader("Data preview")
+        st.dataframe(df.head(100), use_container_width=True, height=350)
+    with right:
+        st.subheader("Column types")
+        type_df = pd.DataFrame({"Field":df.columns.astype(str), "Type":df.dtypes.astype(str), "Missing":df.isna().sum().values, "Unique":df.nunique(dropna=True).values})
+        st.dataframe(type_df, hide_index=True, use_container_width=True, height=350)
+    with st.expander("Detailed profile"):
+        st.json(profile_data(df))
+with explore:
+    st.subheader("Explore your data")
     if categorical and numeric:
-        group_col = st.selectbox("Group by", categorical, key="group")
-        metric_col = st.selectbox("Metric", numeric, key="metric")
-        op = st.selectbox("Operation", ["sum", "mean", "median", "count", "min", "max"])
-        if st.button("Calculate", key="calculate_grouped"):
-            st.json(grouped_metric(df, group_col, metric_col, op))
-with st.expander("IQR outlier scan"):
-    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+        c1,c2,c3 = st.columns(3)
+        group_col = c1.selectbox("Break down by", categorical, key="explore_group")
+        metric_col = c2.selectbox("Measure", numeric, key="explore_metric")
+        operation = c3.selectbox("Aggregation", ["sum","mean","median","count","min","max"], key="explore_op")
+        result = grouped_metric(df, group_col, metric_col, operation)
+        if "results" in result:
+            result_df = pd.DataFrame(list(result["results"].items()), columns=[group_col, f"{operation} of {metric_col}"])
+            st.bar_chart(result_df.set_index(group_col))
+            st.dataframe(result_df, hide_index=True, use_container_width=True)
+        else:
+            st.warning(result.get("error", "Unable to calculate this metric."))
+    else:
+        st.info("Exploration charts need at least one categorical and one numeric field.")
+    if date_cols and numeric:
+        st.divider()
+        c1,c2 = st.columns(2)
+        date_col = c1.selectbox("Date field", date_cols, key="trend_date")
+        trend_metric = c2.selectbox("Trend metric", numeric, key="trend_metric")
+        trend = monthly_trend(df, date_col, trend_metric, "sum")
+        if "trend" in trend and trend["trend"]:
+            trend_df = pd.DataFrame(list(trend["trend"].items()), columns=["Month","Value"]).sort_values("Month")
+            st.line_chart(trend_df.set_index("Month"))
+        else:
+            st.caption("No valid dates were found in the selected column.")
+with ask:
+    st.subheader("Ask a business question")
+    question = st.text_area("Your question", placeholder="Compare revenue by region. Which region is strongest and what patterns stand out?", height=90)
+    provider = st.selectbox("Interpretation mode", ["No AI — free demo", "OpenAI", "Anthropic Claude", "Google Gemini"])
+    model_options = {
+        "OpenAI": ["gpt-4o-mini", "gpt-4o"],
+        "Anthropic Claude": ["claude-3-5-haiku-latest", "claude-3-5-sonnet-latest"],
+        "Google Gemini": ["gemini-2.0-flash", "gemini-2.0-pro"],
+    }
+    key, model = "", None
+    if provider != "No AI — free demo":
+        model = st.selectbox("Model", model_options[provider])
+        key = st.text_input("API key", type="password", help="Used for this request; the app does not intentionally save it.")
+        st.caption("Provider API access may be billed separately from consumer subscriptions.")
+        st.warning("Privacy: only your question and computed findings are sent to the provider. Findings may contain derived information. Avoid confidential data in this public demo.")
+    run = st.button("Run analysis", type="primary", disabled=not question.strip())
+    if run:
+        with st.spinner("Running analytics specialists..."):
+            try:
+                result = run_demo_analysis(df, question)
+                st.markdown(result["final_answer"])
+                if provider != "No AI — free demo":
+                    if not key.strip():
+                        st.error("Enter an API key, or select free demo mode.")
+                    else:
+                        with st.spinner("Generating evidence-based interpretation..."):
+                            try:
+                                ai_text = ask_provider(provider, key.strip(), question, result["findings"], model=model)
+                                st.markdown("#### AI interpretation")
+                                st.markdown(ai_text)
+                                payload_chars = len(question) + len(str(result["findings"]))
+                                st.caption(f"Approximate input-size indicator: ~{max(1, payload_chars // 4):,} tokens (not actual usage or cost).")
+                            except Exception as exc:
+                                st.error(f"Provider request failed ({type(exc).__name__}). Check API key, model, billing, or quota.")
+                with st.expander("Specialist trace and evidence"):
+                    st.write("**Selected specialists:**", result.get("specialists", []))
+                    for event in result.get("audit_log", []):
+                        st.write(f"• {event}")
+                    st.json(result.get("findings", []))
+            except Exception as exc:
+                st.error(f"Analysis failed ({type(exc).__name__}): {exc}")
+    st.info("Free demo mode runs deterministic Python analytics without an API key. AI mode interprets computed evidence; it does not directly inspect the raw CSV.")
+with tools:
+    st.subheader("Toolbox")
     if numeric:
-        anomaly_metric = st.selectbox("Metric to scan", numeric)
-        if st.button("Scan", key="scan_outliers"):
-            st.json(anomaly_scan(df, anomaly_metric))
-st.info("Demo data is synthetic. No AI selected? The app remains fully usable. AI mode sends the question and computed summaries, not the full uploaded dataset.")
+        metric = st.selectbox("Numeric field to scan", numeric, key="outlier_metric")
+        if st.button("Find unusual values"):
+            st.json(anomaly_scan(df, metric))
+    else:
+        st.info("No numeric fields available for anomaly detection.")
+    st.caption("Anomaly scans use the interquartile range (IQR) rule and are intended for exploration, not automatic decisions.")
