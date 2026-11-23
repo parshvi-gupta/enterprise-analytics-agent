@@ -62,13 +62,13 @@ if st.button("Run analysis", type="primary", disabled=not question.strip()):
                 else:
                     with st.spinner(f"Getting interpretation from {provider}..."):
                         try:
-                        ai_text = ask_provider(provider, key.strip(), question, result["findings"], model=model)
-                        st.subheader(f"{provider} interpretation ({model})")
-                        st.markdown(ai_text)
-                        payload_chars = len(question) + len(str(result["findings"]))
-                        st.caption(f"Rough input-size estimate: ~{max(1, payload_chars // 4):,} tokens. This is not actual token usage or a cost estimate; provider billing varies by model and output.")
-                    except Exception as ai_exc:
-                        st.error(f"AI provider request failed ({type(ai_exc).__name__}). Check the API key, model availability, provider billing, or quota.")
+                            ai_text = ask_provider(provider, key.strip(), question, result["findings"], model=model)
+                            st.subheader(f"{provider} interpretation ({model})")
+                            st.markdown(ai_text)
+                            payload_chars = len(question) + len(str(result["findings"]))
+                            st.caption(f"Rough input-size estimate: ~{max(1, payload_chars // 4):,} tokens. This is not actual token usage or a cost estimate; provider billing varies by model and output.")
+                        except Exception as ai_exc:
+                            st.error(f"AI provider request failed ({type(ai_exc).__name__}). Check the API key, model availability, provider billing, or quota.")
             with st.expander("Specialist execution trace"):
                 st.write("**Selected specialists:**", result.get("specialists", []))
                 for event in result.get("audit_log", []):
