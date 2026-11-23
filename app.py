@@ -1,67 +1,74 @@
 from pathlib import Path
-import os
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
-from src.analytics_tools import profile_data, grouped_metric, monthly_trend, anomaly_scan
-from src.agent import ask_agent
+from src.analytics_tools import profile_data, grouped_metric, anomaly_scan
+from src.multi_agent import run_multi_agent
 
 load_dotenv()
-st.set_page_config(page_title="Analytics Copilot", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Analytics Copilot | Multi-Agent", page_icon="📊", layout="wide")
 st.title("📊 Analytics Copilot")
-st.caption("Ask questions about your data. The agent can call a bounded set of analytics tools.")
-
+st.caption("Supervisor → specialist analysts → synthesis → critic. The agents use bounded, deterministic analytics tools.")
 sample_path = Path("data/sample_sales.csv")
+
 with st.sidebar:
     st.header("Dataset")
-    upload = st.file_uploader("Upload a CSV", type=["csv"])
+    upload = st.file_uploader("Upload CSV", type=["csv"])
     if upload is not None:
         try:
             df = pd.read_csv(upload)
         except Exception as exc:
-            st.error(f"Could not read CSV: {exc}")
+            st.error(f"Unable to parse CSV: {exc}")
             st.stop()
     else:
         df = pd.read_csv(sample_path)
-        st.info("Using the sample sales dataset.")
-    st.write(f"**Rows:** {len(df):,}  |  **Columns:** {len(df.columns)}")
-    st.write("Columns:", list(df.columns))
+        st.info("Sample sales dataset loaded.")
+    st.write(f"**Rows:** {len(df):,} | **Columns:** {len(df.columns)}")
+    st.write("Fields:", list(df.columns))
 
-st.subheader("Data preview")
-st.dataframe(df.head(100), use_container_width=True)
-
-c1, c2, c3 = st.columns(3)
-c1.metric("Rows", f"{len(df):,}")
-c2.metric("Columns", len(df.columns))
-c3.metric("Missing cells", int(df.isna().sum().sum()))
-
-with st.expander("Dataset profile"):
+st.subheader("Data overview")
+k1, k2, k3 = st.columns(3)
+k1.metric("Records", f"{len(df):,}")
+k2.metric("Columns", len(df.columns))
+k3.metric("Missing values", int(df.isna().sum().sum()))
+st.dataframe(df.head(50), use_container_width=True)
+with st.expander("Profile data"):
     st.json(profile_data(df))
 
-st.subheader("Ask a question")
-question = st.text_input("Business question", placeholder="Which region has the highest revenue?")
-if st.button("Analyze", type="primary", disabled=not question.strip()):
-    if not os.getenv("OPENAI_API_KEY"):
-        st.warning("Add OPENAI_API_KEY to .env to enable the agent. You can still explore the deterministic analytics below.")
-    else:
-        with st.spinner("Agent is analyzing and using tools..."):
-            try:
-                st.markdown(ask_agent(df, question))
-            except Exception as exc:
-                st.error(f"Agent error: {exc}")
+st.subheader("Ask the analytics team")
+question = st.text_input("Question", placeholder="Compare total revenue by region and explain the main pattern")
+if st.button("Run multi-agent analysis", type="primary", disabled=not question.strip()):
+    with st.spinner("Supervisor routing work to specialist agents..."):
+        try:
+            result = run_multi_agent(df, question)
+            st.markdown(result.get("final_answer", result.get("draft_answer", "No answer was produced.")))
+            with st.expander("Agent execution trace"):
+                st.write("**Selected specialists:**", result.get("specialists", []))
+                st.write("**Workflow log:**")
+                for event in result.get("audit_log", []):
+                    st.write(f"- {event}")
+                st.write("**Evidence and specialist findings:**")
+                st.json(result.get("findings", []))
+                st.write("**Critic approved:**", result.get("approved"))
+                st.write("**Revision attempts:**", result.get("revision_attempts", 0))
+        except Exception as exc:
+            st.error(f"Workflow error: {type(exc).__name__}: {exc}")
 
-st.subheader("Quick analytics")
-with st.expander("Group metric"):
-    group_col = st.selectbox("Group by", list(df.columns), key="group")
-    numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
-    if numeric_cols:
-        metric_col = st.selectbox("Metric", numeric_cols, key="metric")
-        operation = st.selectbox("Operation", ["sum", "mean", "median", "count", "min", "max"])
-        if st.button("Calculate grouped metric"):
-            st.json(grouped_metric(df, group_col, metric_col, operation))
-with st.expander("Outlier scan"):
-    numeric_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
-    if numeric_cols:
-        anomaly_metric = st.selectbox("Column for IQR scan", numeric_cols)
-        if st.button("Scan for anomalies"):
+st.subheader("Deterministic tools (no LLM)")
+with st.expander("Group a metric"):
+    categorical = [c for c in df.columns if not pd.api.types.is_numeric_dtype(df[c])]
+    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c)]
+    if categorical and numeric:
+        group_col = st.selectbox("Group by", categorical, key="group")
+        metric_col = st.selectbox("Metric", numeric, key="metric")
+        op = st.selectbox("Operation", ["sum", "mean", "median", "count", "min", "max"])
+        if st.button("Calculate", key="calculate_grouped"):
+            st.json(grouped_metric(df, group_col, metric_col, op))
+with st.expander("IQR outlier scan"):
+    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    if numeric:
+        anomaly_metric = st.selectbox("Metric to scan", numeric)
+        if st.button("Scan", key="scan_outliers"):
             st.json(anomaly_scan(df, anomaly_metric))
+
+st.info("Portfolio demo: synthetic sample data only. Agents do not run arbitrary code or write to external systems.")
