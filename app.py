@@ -1,14 +1,16 @@
 from pathlib import Path
+import os
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 from src.analytics_tools import profile_data, grouped_metric, anomaly_scan
+from src.demo_agent import run_demo_analysis
 from src.multi_agent import run_multi_agent
 
 load_dotenv()
 st.set_page_config(page_title="Analytics Copilot | Multi-Agent", page_icon="📊", layout="wide")
 st.title("📊 Analytics Copilot")
-st.caption("Supervisor → specialist analysts → synthesis → critic. The agents use bounded, deterministic analytics tools.")
+st.caption("Bounded analytics specialists with deterministic demo mode and optional LLM mode.")
 sample_path = Path("data/sample_sales.csv")
 
 with st.sidebar:
@@ -37,10 +39,14 @@ with st.expander("Profile data"):
 
 st.subheader("Ask the analytics team")
 question = st.text_input("Question", placeholder="Compare total revenue by region and explain the main pattern")
-if st.button("Run multi-agent analysis", type="primary", disabled=not question.strip()):
-    with st.spinner("Supervisor routing work to specialist agents..."):
+api_available = bool(os.getenv("OPENAI_API_KEY"))
+use_llm = st.checkbox("Use optional LLM-powered workflow (requires API key)", value=False, disabled=not api_available, help="Demo mode works without credentials. LLM mode requires your own API key.")
+if not api_available:
+    st.info("No API key detected — deterministic demo mode is enabled. All core analytics and specialist routing work without credentials.")
+if st.button("Run analysis", type="primary", disabled=not question.strip()):
+    with st.spinner("Running specialist analytics..."):
         try:
-            result = run_multi_agent(df, question)
+            result = run_multi_agent(df, question) if use_llm and api_available else run_demo_analysis(df, question)
             st.markdown(result.get("final_answer", result.get("draft_answer", "No answer was produced.")))
             with st.expander("Agent execution trace"):
                 st.write("**Selected specialists:**", result.get("specialists", []))
@@ -57,7 +63,7 @@ if st.button("Run multi-agent analysis", type="primary", disabled=not question.s
 st.subheader("Deterministic tools (no LLM)")
 with st.expander("Group a metric"):
     categorical = [c for c in df.columns if not pd.api.types.is_numeric_dtype(df[c])]
-    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c)]
+    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
     if categorical and numeric:
         group_col = st.selectbox("Group by", categorical, key="group")
         metric_col = st.selectbox("Metric", numeric, key="metric")
@@ -71,4 +77,4 @@ with st.expander("IQR outlier scan"):
         if st.button("Scan", key="scan_outliers"):
             st.json(anomaly_scan(df, anomaly_metric))
 
-st.info("Portfolio demo: synthetic sample data only. Agents do not run arbitrary code or write to external systems.")
+st.info("Portfolio demo uses synthetic sample data. Analytics are deterministic; no arbitrary code execution or external data writes.")
