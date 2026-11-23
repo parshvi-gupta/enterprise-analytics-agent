@@ -11,3 +11,12 @@ def test_demo_analysis_needs_no_api_key():
     assert result["final_answer"].startswith("### Demo-mode analysis")
     assert result["specialists"]
     assert result["findings"][0]["evidence"]
+
+
+def test_profiler_reports_schema_and_missing_cells():
+    df = pd.DataFrame({"name":["A",None],"sales":[10,20]})
+    result = run_demo_analysis(df, "profile dataset")
+    profiler = next(x for x in result["findings"] if x["specialist"] == "profiler")
+    assert profiler["evidence"]["rows"] == 2
+    assert profiler["evidence"]["columns"] == ["name", "sales"]
+    assert sum(profiler["evidence"]["missing_values"].values()) == 1
